@@ -1,0 +1,11 @@
+server.port: 5601
+server.host: "0.0.0.0"
+elasticsearch.hosts: ["http://{{ elasticsearch_host }}:9200"]
+kibana.index: ".kibana"
+logging.dest: /var/log/kibana/kibana.log
+
+# Security settings
+elasticsearch.username: "kibana_system"
+elasticsearch.password: "1234"
+xpack.security.enabled: true
+

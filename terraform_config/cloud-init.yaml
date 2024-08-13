@@ -1,0 +1,14 @@
+#cloud-config
+datasource:
+  Ec2:
+    strict_id: false
+ssh_pwauth: no
+users:
+- name: lukianchikovai
+  sudo: 'ALL=(ALL) NOPASSWD:ALL'
+  shell: /bin/bash
+  ssh_authorized_keys:
+  - ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDtPGIUbmC3dDJMK6fU9v/ssJD8NUh6v2hE0aGEC67Ua4C1P8ap3cAk9hujtpnsF4KBRyYVc4u2PLcmsWIZ9JpoL5hEjJ7NNIHBQQDnplpuktlFz2Y5enRqGqSX1dyldo9E3mxMU5tbau8lVaNVF7E/X82X6wzcD/s+cyRCYg+i/7FejOqywUbr3XfkoIZMLyI6wrn+04NvxFCqAttX+ni2uPThff2ait/rvyL+MRaa4O1Zf27xbHGvduUlFva2b1QXmLc9Es1t4ZeHR4YxzX5Uu/lqW7FKSXuB88OBPeJz7YAEMzasjSjq3rwQZiCKiwn9mRr5vXKYza/HBkWxq4wF lukianchikovai@netology1
+
+runcmd: []
+

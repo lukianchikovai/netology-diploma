@@ -1,3 +1,1 @@
-yc_token     = 
-yc_cloud_id  = 
-yc_folder_id = 
+Значения - токен, cloud id, folder id 

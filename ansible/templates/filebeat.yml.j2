@@ -5,4 +5,7 @@ filebeat.inputs:
     - /var/log/nginx/error.log
 
 output.elasticsearch:
-  hosts: ["{{ elasticsearch_host }}:9200"]
+  hosts: ["https://{{ elasticsearch_host }}:9200"]
+  username: "{{ filebeat_username }}"
+  password: "{{ filebeat_password }}"
+  ssl.certificate_authorities: ["/etc/filebeat/certs/ca.crt"]

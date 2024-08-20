@@ -1,40 +1,6 @@
 ---
-- name: Deploy Infrastructure Components
-  hosts: bastion
-  become: true
-  tasks:
-    - name: Configure SSH access via bastion
-      lineinfile:
-        path: /etc/ssh/sshd_config
-        regexp: '^#?ProxyJump'
-        line: 'ProxyJump bastion'
-      notify:
-        - restart sshd
 
-    - name: Restart SSH service
-      service:
-        name: sshd
-        state: restarted
-
-    - name: Create NAT Gateway
-      shell: |
-        yandex vpc nat-gateway create \
-          --name nat-gateway \
-          --network-id {{ var.yc_network_id }} \
-          --subnet-id {{ var.yc_subnet_id }}
-
-    - name: Configure Load Balancer for Web Servers
-      shell: |
-        yandex lb target-group create \
-          --name web-servers \
-          --network-id {{ var.yc_network_id }} \
-          --region-id {{ var.yc_zone }} \
-          --address "{{ item }}"
-      loop:
-        - "{{ yandex_compute_instance.web1.network_interface[0].ip_address }}"
-        - "{{ yandex_compute_instance.web2.network_interface[0].ip_address }}"
-
-- name: Install Python 3
+- name: Install Python 3 and configure repositories
   hosts: all
   become: true
   tasks:
@@ -44,11 +10,110 @@
         state: present
       when: ansible_os_family == "Debian"
 
+    - name: Replace Yandex mirror with official Ubuntu repositories
+      copy:
+        content: |
+          deb http://archive.ubuntu.com/ubuntu/ jammy main restricted universe multiverse
+          deb http://archive.ubuntu.com/ubuntu/ jammy-updates main restricted universe multiverse
+          deb http://archive.ubuntu.com/ubuntu/ jammy-backports main restricted universe multiverse
+          deb http://archive.ubuntu.com/ubuntu/ jammy-security main restricted universe multiverse
+        dest: /etc/apt/sources.list
+        owner: root
+        group: root
+        mode: '0644'
+
+- name: Update apt cache
+  hosts: all
+  become: true
+  tasks:
+    - name: Update apt cache
+      apt:
+        update_cache: yes
+
+- name: Configure Bastion Server
+  hosts: bastion
+  become: true
+  tasks:
+    - name: Install necessary packages
+      apt:
+        name: iptables
+        state: present
+      when: ansible_os_family == "Debian"
+
+    - name: Open SSH port on Bastion
+      ansible.builtin.iptables:
+        chain: INPUT
+        protocol: tcp
+        destination_port: 22
+        source: 0.0.0.0/0
+        jump: ACCEPT
+      become: true
+
+    - name: Allow forwarding to web servers from Bastion
+      ansible.builtin.iptables:
+        chain: FORWARD
+        protocol: tcp
+        destination: 192.168.20.0/24
+        jump: ACCEPT
+      become: true
+
+    - name: Forward Zabbix portal
+      ansible.builtin.iptables:
+        chain: PREROUTING
+        table: nat
+        protocol: tcp
+        destination_port: 8080
+        jump: DNAT
+        to_destination: 192.168.10.27:80
+      become: true
+
+    - name: Forward Kibana portal
+      ansible.builtin.iptables:
+        chain: PREROUTING
+        table: nat
+        protocol: tcp
+        destination_port: 8081
+        jump: DNAT
+        to_destination: 192.168.10.26:5601
+      become: true
+
+    - name: Forward Elasticsearch portal
+      ansible.builtin.iptables:
+        chain: PREROUTING
+        table: nat
+        protocol: tcp
+        destination_port: 8082
+        jump: DNAT
+        to_destination: 192.168.20.25:9200
+      become: true
+
+    - name: Forward Nginx web1
+      ansible.builtin.iptables:
+        chain: PREROUTING
+        table: nat
+        protocol: tcp
+        destination_port: 8083
+        jump: DNAT
+        to_destination: 192.168.20.5:80
+      become: true
+
+    - name: Forward Nginx web2
+      ansible.builtin.iptables:
+        chain: PREROUTING
+        table: nat
+        protocol: tcp
+        destination_port: 8084
+        jump: DNAT
+        to_destination: 192.168.21.24:80
+      become: true
+
 - name: Configure Web Servers
   hosts:
-    - web1.ru-central1.internal
-    - web2.ru-central1.internal
+    - fhmnqnglbq59e8sijb0e.auto.internal
+    - epd8upobbm0d68il6pjl.auto.internal
   become: true
+  vars_files:
+    - /home/lukianchikovai/netology-diploma/ansible/vars.yml
   tasks:
     - name: Install Nginx
       apt:
@@ -57,7 +122,7 @@
 
     - name: Copy index.html to web servers
       copy:
-        src: /path/to/local/index.html
+        src: /home/lukianchikovai/netology-diploma/ansible/index.nginx-ubuntu.html
         dest: /var/www/html/index.html
         owner: www-data
         group: www-data
@@ -70,18 +135,17 @@
       notify:
         - restart nginx
 
-    - name: Restart Nginx
+  handlers:
+    - name: restart nginx
       service:
         name: nginx
         state: restarted
 
 - name: Install and Configure Monitoring Tools
-  hosts:
-    - web1.ru-central1.internal
-    - web2.ru-central1.internal
-    - zabbix.ru-central1.internal
-    - elasticsearch.ru-central1.internal
+  hosts: all
   become: true
+  vars_files:
+    - /home/lukianchikovai/netology-diploma/ansible/vars.yml
   tasks:
     - name: Install Zabbix Agent
       apt:
@@ -90,28 +154,26 @@
 
     - name: Configure Zabbix Agent
       template:
-        src: zabbix_agentd.conf.j2
+        src: /home/lukianchikovai/netology-diploma/ansible/templates/zabbix_agentd.conf.j2
         dest: /etc/zabbix/zabbix_agentd.conf
       notify:
         - restart zabbix-agent
 
-    - name: Restart Zabbix Agent
+  handlers:
+    - name: restart zabbix-agent
       service:
         name: zabbix-agent
         state: restarted
 
-    - name: Install Elasticsearch
-      apt:
-        name: elasticsearch
-        state: present
+- import_playbook: install_elasticsearch.yml
 
-    - name: Configure Elasticsearch
-      template:
-        src: templates/elasticsearch.yml.j2
-        dest: /etc/elasticsearch/elasticsearch.yml
-      notify:
-        - restart elasticsearch
-
+- name: Install Kibana
+  hosts:
+    - kibana.ru-central1.internal
+  become: true
+  vars_files:
+    - /home/lukianchikovai/netology-diploma/ansible/vars.yml
+  tasks:
     - name: Install Kibana
       apt:
         name: kibana
@@ -124,6 +186,25 @@
       notify:
         - restart kibana
 
+    - name: Restart Kibana
+      service:
+        name: kibana
+        state: restarted
+
+  handlers:
+    - name: restart kibana
+      service:
+        name: kibana
+        state: restarted
+
+- name: Install Filebeat
+  hosts:
+    - fhmnqnglbq59e8sijb0e.auto.internal
+    - epd8upobbm0d68il6pjl.auto.internal
+  become: true
+  vars_files:
+    - /home/lukianchikovai/netology-diploma/ansible/vars.yml
+  tasks:
     - name: Install Filebeat
       apt:
         name: filebeat
@@ -141,98 +222,7 @@
         name: filebeat
         state: restarted
 
-- name: Manage Snapshots
-  hosts: localhost
-  tasks:
-    - name: Create Snapshots of VM Disks
-      shell: |
-        # Create snapshots for each VM
-        for vm in {{ range(0, 2) | list }}; do
-          yandex compute snapshot create \
-            --name web-disk-snapshot-{{ vm }} \
-            --disk-id "{{ yandex_compute_instance.web[vm].boot_disk[0].disk_id }}"
-        done
-        for vm in 3 4; do
-          yandex compute snapshot create \
-            --name elasticsearch-disk-snapshot \
-            --disk-id "{{ yandex_compute_instance.elasticsearch.boot_disk[0].disk_id }}"
-          yandex compute snapshot create \
-            --name kibana-disk-snapshot \
-            --disk-id "{{ yandex_compute_instance.kibana.boot_disk[0].disk_id }}"
-        done
-      register: snapshot_creation
-
-    - name: Schedule Daily Snapshot Creation
-      cron:
-        name: "Create daily snapshots of VM disks"
-        minute: "0"
-        hour: "1"
-        job: |
-          #!/bin/bash
-          for vm in {{ range(0, 2) | list }}; do
-            yandex compute snapshot create \
-              --name web-disk-snapshot-$(date +%F)-{{ vm }} \
-              --disk-id "{{ yandex_compute_instance.web[vm].boot_disk[0].disk_id }}"
-          done
-        state: present
-
-    - name: Retain Snapshots for One Week
-      cron:
-        name: "Remove old snapshots"
-        minute: "0"
-        hour: "2"
-        job: |
-          #!/bin/bash
-          # Define retention period (in days)
-          RETENTION_DAYS=7
-
-          # Get the current date in seconds since epoch
-          CURRENT_DATE=$(date +%s)
-
-          # List snapshots and filter out old ones
-          yandex compute snapshot list | while read -r line; do
-            SNAPSHOT_DATE=$(echo $line | awk '{print $4}')
-            SNAPSHOT_ID=$(echo $line | awk '{print $1}')
-
-            # Convert snapshot date to seconds since epoch
-            SNAPSHOT_DATE_EPOCH=$(date -d "$SNAPSHOT_DATE" +%s)
-
-            # Calculate age of snapshot (in days)
-            SNAPSHOT_AGE=$(( (CURRENT_DATE - SNAPSHOT_DATE_EPOCH) / 86400 ))
-
-            # Delete snapshot if it is older than retention period
-            if [ "$SNAPSHOT_AGE" -gt "$RETENTION_DAYS" ]; then
-              yandex compute snapshot delete --snapshot-id $SNAPSHOT_ID
-            fi
-          done
-        state: present
-
   handlers:
-    - name: restart nginx
-      service:
-        name: nginx
-        state: restarted
-
-    - name: restart sshd
-      service:
-        name: sshd
-        state: restarted
-
-    - name: restart zabbix-agent
-      service:
-        name: zabbix-agent
-        state: restarted
-
-    - name: restart elasticsearch
-      service:
-        name: elasticsearch
-        state: restarted
-
-    - name: restart kibana
-      service:
-        name: kibana
-        state: restarted
-
     - name: restart filebeat
       service:
         name: filebeat

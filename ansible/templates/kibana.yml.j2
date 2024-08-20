@@ -5,7 +5,6 @@ kibana.index: ".kibana"
 logging.dest: /var/log/kibana/kibana.log
 
 # Security settings
-elasticsearch.username: "kibana_system"
-elasticsearch.password: "1234"
+elasticsearch.username: "{{ kibana_username }}"
+elasticsearch.password: "{{ kibana_password }}"
 xpack.security.enabled: true
-

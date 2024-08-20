@@ -9,8 +9,8 @@ variable "yc_cloud_id" {
 variable "yc_folder_id" {
   description = "Yandex Cloud Folder ID"
 }
-
 variable "yc_zone" {
-  description = "Yandex Cloud Zone"
-  default     = "ru-central1-a"
+  description = "List of Yandex Cloud Zones"
+  type        = list(string)
+  default     = ["ru-central1-a", "ru-central1-b"]
 }

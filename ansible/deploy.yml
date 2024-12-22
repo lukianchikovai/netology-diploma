@@ -1,5 +1,17 @@
 ---
 
+- name: Copy SSH key to jump server
+  hosts: bastion
+  tasks:
+    - name: Copy SSH key to jump server
+      ansible.builtin.copy:
+        src: "/home/lukianchikovai/.ssh/id_rsa"
+        dest: "/home/lukianchikovai/.ssh/id_rsa"
+        owner: "lukianchikovai"
+        group: "lukianchikovai"
+        mode: "0600"
+      become: true
+
 - name: Install Python 3 and configure repositories
   hosts: all
   become: true
@@ -21,6 +33,33 @@
         owner: root
         group: root
         mode: '0644'
+
+- name: Install and configure Nginx on all relevant servers
+  hosts:
+    - 89.169.153.61
+    - kibana.ru-central1.internal
+    - web-1.ru-central1.internal
+    - web-2.ru-central1.internal
+  become: true
+  tasks:
+    - name: Install Nginx
+      ansible.builtin.apt:
+        name: nginx
+        state: present
+        update_cache: yes
+
+    - name: Configure Nginx
+      ansible.builtin.template:
+        src: /home/lukianchikovai/netology-diploma/ansible/templates/nginx.conf.j2
+        dest: /etc/nginx/nginx.conf
+        mode: '0644'
+
+    - name: Enable and restart Nginx
+      ansible.builtin.systemd:
+        name: nginx
+        state: restarted
+        enabled: true
+
 
 - name: Update apt cache
   hosts: all
@@ -53,7 +92,7 @@
       ansible.builtin.iptables:
         chain: FORWARD
         protocol: tcp
-        destination: 192.168.20.0/24
+        destination: 192.168.20.0/24, 192.168.21.0/24
         jump: ACCEPT
       become: true
 
@@ -64,7 +103,7 @@
         protocol: tcp
         destination_port: 8080
         jump: DNAT
-        to_destination: 192.168.10.27:80
+        to_destination: 192.168.10.5:80
       become: true
 
     - name: Forward Kibana portal
@@ -74,7 +113,7 @@
         protocol: tcp
         destination_port: 8081
         jump: DNAT
-        to_destination: 192.168.10.26:5601
+        to_destination: 192.168.10.13:5601
       become: true
 
     - name: Forward Elasticsearch portal
@@ -84,7 +123,7 @@
         protocol: tcp
         destination_port: 8082
         jump: DNAT
-        to_destination: 192.168.20.25:9200
+        to_destination: 192.168.20.26:9200
       become: true
 
     - name: Forward Nginx web1
@@ -94,7 +133,7 @@
         protocol: tcp
         destination_port: 8083
         jump: DNAT
-        to_destination: 192.168.20.5:80
+        to_destination: 192.168.20.22:80
       become: true
 
     - name: Forward Nginx web2
@@ -104,22 +143,17 @@
         protocol: tcp
         destination_port: 8084
         jump: DNAT
-        to_destination: 192.168.21.24:80
+        to_destination: 192.168.21.25:80
       become: true
 
 - name: Configure Web Servers
   hosts:
-    - fhmnqnglbq59e8sijb0e.auto.internal
-    - epd8upobbm0d68il6pjl.auto.internal
+    - web-1.ru-central1.internal
+    - web-2.ru-central1.internal
   become: true
   vars_files:
     - /home/lukianchikovai/netology-diploma/ansible/vars.yml
   tasks:
-    - name: Install Nginx
-      apt:
-        name: nginx
-        state: present
-
     - name: Copy index.html to web servers
       copy:
         src: /home/lukianchikovai/netology-diploma/ansible/index.nginx-ubuntu.html
@@ -140,6 +174,8 @@
       service:
         name: nginx
         state: restarted
+
+- import_playbook: install_zabbix.yml
 
 - name: Install and Configure Monitoring Tools
   hosts: all
@@ -199,8 +235,8 @@
 
 - name: Install Filebeat
   hosts:
-    - fhmnqnglbq59e8sijb0e.auto.internal
-    - epd8upobbm0d68il6pjl.auto.internal
+    - web-1.ru-central1.internal
+    - web-2.ru-central1.internal
   become: true
   vars_files:
     - /home/lukianchikovai/netology-diploma/ansible/vars.yml

@@ -1,10 +1,12 @@
 terraform {
+  required_version = ">= 0.14"
+
   required_providers {
     yandex = {
-      source = "terraform-registry.storage.yandexcloud.net/yandex-cloud/yandex"
+      source  = "yandex-cloud/yandex"
+      version = "~> 0.5"
     }
   }
-  required_version = ">= 0.13"
 }
 
 provider "yandex" {
@@ -127,7 +129,7 @@ resource "yandex_vpc_security_group" "private_sg" {
 
 resource "yandex_compute_instance" "bastion" {
   name        = "bastion"
-  hostname    = "bastion.ru-central1.internal"
+  hostname    = "bastion"
   platform_id = "standard-v1"
   resources {
     cores  = 2
@@ -154,6 +156,7 @@ resource "yandex_compute_instance" "bastion" {
 resource "yandex_compute_instance" "web" {
   count = 2
   name  = "web-${count.index + 1}"
+  hostname = "web-${count.index + 1}"
   zone  = count.index == 0 ? "ru-central1-a" : "ru-central1-b"
 
   resources {
@@ -197,7 +200,7 @@ resource "yandex_compute_instance" "web" {
 
 resource "yandex_compute_instance" "zabbix" {
   name        = "zabbix"
-  hostname    = "zabbix.ru-central1.internal"
+  hostname    = "zabbix"
   platform_id = "standard-v1"
   resources {
     cores  = 2
@@ -240,7 +243,7 @@ resource "yandex_compute_instance" "zabbix" {
 
 resource "yandex_compute_instance" "elasticsearch" {
   name        = "elasticsearch"
-  hostname    = "elasticsearch.ru-central1.internal"
+  hostname    = "elasticsearch"
   platform_id = "standard-v1"
   resources {
     cores  = 2
@@ -283,7 +286,7 @@ resource "yandex_compute_instance" "elasticsearch" {
 
 resource "yandex_compute_instance" "kibana" {
   name        = "kibana"
-  hostname    = "kibana.ru-central1.internal"
+  hostname    = "kibana"
   platform_id = "standard-v1"
   resources {
     cores  = 2
